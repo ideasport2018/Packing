@@ -1,0 +1,119 @@
+// บันทึกการแพ็คประจำวัน ปี 2569 — Google Apps Script
+const DEF = {
+  worker: 'น.ส.คอยรีน ดือราแม (ก๊ะเต๊าะ)',
+  jobs: ['รีด/ตัดอะไหล่', 'แพ็คเสื้อ', 'แพ็คกางเกง', 'เจาะกระดุม'].map(n => ({ name: n, price: null })),
+  types: ['อะไหล่', 'คอวี', 'คอกลม', 'คอปก', 'คอวีปก', 'คอวีมุสลีมะห', 'คอปกวินเทจ', 'กางเกง', 'คอจีน', 'วีตัด', 'วีวินเทจ'],
+  brands: ['Idea sport', 'Maiz', 'AS sport', 'Wesub', 'Rexza', 'SL sport', 'Healas', 'Hunter']
+};
+// ราคาตั้งที่ประเภทเสื้อ: types = [{name, price}]
+const norm = c => ({
+  worker: c.worker || DEF.worker,
+  jobs: (c.jobs || []).map(j => ({ name: typeof j === 'string' ? j : j.name })),
+  types: (c.types || []).map(t => typeof t === 'string' ? { name: t, price: null } : { name: t.name, price: t.price == null || t.price === '' ? null : +t.price }),
+  brands: (c.brands || DEF.brands).map(String)
+});
+const sh = n => SpreadsheetApp.getActiveSpreadsheet().getSheetByName(n);
+const ds = v => v instanceof Date ? Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd') : String(v);
+const num = v => (v === '' || v == null || isNaN(+v)) ? '' : +v;
+
+function doGet() {
+  return HtmlService.createHtmlOutputFromFile('Index')
+    .setTitle('บันทึกการแพ็คประจำวัน ปี 2569')
+    .addMetaTag('viewport', 'width=device-width,initial-scale=1');
+}
+
+// รันครั้งเดียวตอนติดตั้ง: สร้างชีตและตั้งรหัสเริ่มต้น
+function setup() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  [['Entries', ['วันที่', 'ชื่อรายการ', 'งานที่ทำ', 'ประเภทเสื้อ', 'ยอดงาน', 'ราคาต่องาน', 'เพิ่มเติม', 'แบรนด์'], ['A', 'B', 'C', 'D', 'G', 'H']],
+   ['Days', ['วันที่', 'ปัดเศษขึ้น'], ['A']],
+   ['Config', ['key', 'value'], ['A', 'B']]].forEach(([n, h, txt]) => {
+    const s = ss.getSheetByName(n) || ss.insertSheet(n);
+    if (s.getLastRow() === 0) s.appendRow(h);
+    txt.forEach(c => s.getRange(c + ':' + c).setNumberFormat('@')); // เก็บเป็นข้อความ กันวันที่/สูตรเพี้ยน
+  });
+  const p = PropertiesService.getScriptProperties();
+  if (!p.getProperty('OWNER_PIN')) p.setProperty('OWNER_PIN', '');
+  if (!p.getProperty('STAFF_PIN')) p.setProperty('STAFF_PIN', '');
+}
+
+function auth(t, owner) {
+  const r = CacheService.getScriptCache().get('t_' + t);
+  if (!r) throw new Error('หมดเวลา กรุณาเข้าสู่ระบบใหม่');
+  if (owner && r !== 'owner') throw new Error('เฉพาะเจ้าของเท่านั้น');
+  return r;
+}
+
+function login(pin) {
+  const p = PropertiesService.getScriptProperties();
+  pin = String(pin || '');
+  const role = pin === p.getProperty('OWNER_PIN') ? 'owner' : pin === p.getProperty('STAFF_PIN') ? 'staff' : null;
+  if (!role) { Utilities.sleep(1000); throw new Error('รหัสผ่านไม่ถูกต้อง'); }
+  const t = Utilities.getUuid();
+  CacheService.getScriptCache().put('t_' + t, role, 21600);
+  return { token: t };
+}
+
+function cfg() {
+  const s = sh('Config'), v = s.getLastRow() > 1 ? s.getRange(2, 2).getValue() : '';
+  try { return norm(Object.assign({}, DEF, JSON.parse(v))); } catch (e) { return norm(DEF); }
+}
+
+function getAll(t) {
+  const role = auth(t), days = {};
+  const e = sh('Entries'), n = e.getLastRow() - 1;
+  if (!e.getRange(1, 8).getValue()) { e.getRange(1, 8).setValue('แบรนด์'); e.getRange('H:H').setNumberFormat('@'); } // เพิ่มคอลัมน์แบรนด์ให้ชีตเดิมอัตโนมัติ
+  if (n > 0) e.getRange(2, 1, n, 8).getValues().forEach(r => {
+    const k = ds(r[0]);
+    (days[k] = days[k] || { items: [], round: false }).items.push({ order: r[1], job: r[2], type: r[3], qty: r[4], price: r[5], extra: r[6], brand: r[7] });
+  });
+  const d = sh('Days'), m = d.getLastRow() - 1;
+  if (m > 0) d.getRange(2, 1, m, 2).getValues().forEach(r => {
+    const k = ds(r[0]); if (days[k]) days[k].round = r[1] === true || r[1] === 'TRUE';
+  });
+  return { role, cfg: cfg(), days };
+}
+
+function rewrite(name, w, keep, add) {
+  const s = sh(name), n = s.getLastRow() - 1;
+  let rows = n > 0 ? s.getRange(2, 1, n, w).getValues().filter(keep) : [];
+  rows = rows.concat(add).sort((a, b) => ds(a[0]) < ds(b[0]) ? -1 : ds(a[0]) > ds(b[0]) ? 1 : 0);
+  if (n > 0) s.getRange(2, 1, n, w).clearContent();
+  if (rows.length) s.getRange(2, 1, rows.length, w).setValues(rows);
+}
+
+// บันทึกทั้งวัน (แทนที่ของเดิมของวันนั้น) ถ้าไม่มีรายการ = ลบวัน
+function saveDay(t, k, items, round) {
+  auth(t);
+  if (!/^\d{4}-\d\d-\d\d$/.test(k)) throw new Error('วันที่ไม่ถูกต้อง');
+  const L = LockService.getScriptLock(); L.waitLock(20000);
+  try {
+    rewrite('Entries', 8, r => ds(r[0]) !== k,
+      items.map(i => [k, i.order || '', i.job || '', i.type || '', num(i.qty), num(i.price), i.extra || '', i.brand || '']));
+    rewrite('Days', 2, r => ds(r[0]) !== k, items.length ? [[k, !!round]] : []);
+  } finally { L.releaseLock(); }
+}
+
+function saveCfg(t, c) {
+  auth(t, true);
+  sh('Config').getRange(2, 1, 1, 2).setValues([['cfg', JSON.stringify(norm(c))]]);
+}
+
+function setPin(t, which, pin) {
+  auth(t, true);
+  pin = String(pin || '');
+  if (pin.length < 4) throw new Error('รหัสต้องมีอย่างน้อย 4 ตัว');
+  PropertiesService.getScriptProperties().setProperty(which === 'owner' ? 'OWNER_PIN' : 'STAFF_PIN', pin);
+}
+
+// เปลี่ยนชื่องาน/ประเภทในประวัติทั้งหมด (field = 'job' หรือ 'type')
+function renameVal(t, field, o, n) {
+  auth(t, true);
+  const L = LockService.getScriptLock(); L.waitLock(20000);
+  try {
+    const s = sh('Entries'), r = s.getLastRow() - 1;
+    if (r < 1) return;
+    const rg = s.getRange(2, { job: 3, type: 4, brand: 8 }[field], r, 1);
+    rg.setValues(rg.getValues().map(x => [x[0] === o ? n : x[0]]));
+  } finally { L.releaseLock(); }
+}
