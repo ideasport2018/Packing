@@ -65,7 +65,7 @@ tr.dh td{background:#f5f5f7;font-weight:600;border-bottom:0}
 .foot{display:flex;gap:6px 20px;justify-content:flex-end;align-items:center;flex-wrap:wrap;margin-top:12px}
 .foot label{display:flex;gap:6px;align-items:center}.foot input{width:auto}
 .fd{background:#f5f5f7;border-radius:12px;padding:8px 12px;font-weight:600;margin:12px 0 4px}.fd:first-of-type{margin-top:0}
-.fi,.fh{display:grid;grid-template-columns:1fr 170px 110px auto;gap:6px 12px;align-items:center;padding:8px 12px}
+.fi,.fh{display:grid;grid-template-columns:1fr 150px 140px 110px auto;gap:6px 12px;align-items:center;padding:8px 12px}
 .fi{border-bottom:1px solid var(--line)}.fh{color:var(--mu);font-size:12px;letter-spacing:.02em;text-transform:uppercase;font-weight:600}
 .fq{text-align:right;font-variant-numeric:tabular-nums}.fa{white-space:nowrap;display:flex;gap:8px;justify-content:flex-end}
 /* ล็อกอิน + toast */
@@ -92,7 +92,7 @@ tr.dh td{background:#f5f5f7;font-weight:600;border-bottom:0}
  .card{padding:16px}.kp b{font-size:24px}
  .btn,.gh{min-height:44px}.mi{min-height:36px}
  input,select{font-size:16px;padding:10px;min-height:44px}
- .fi{grid-template-columns:1fr auto}.fh{display:none}.fn{grid-column:1/-1;font-weight:600}.fa{grid-column:1/-1}.fa .gh{flex:1}
+ .fi{grid-template-columns:1fr 1fr auto}.fh{display:none}.fn{grid-column:1/-1;font-weight:600}.fa{grid-column:1/-1}.fa .gh{flex:1}
  .it.h{display:none}
  .it{grid-template-columns:1fr 1fr;padding:12px;border:0;border-radius:18px;box-shadow:var(--shadow);margin-bottom:12px}
  .it label{display:block}.it .w{grid-column:1/-1}.it>.w:first-child{padding-right:44px}.it .x{position:absolute;top:30px;right:8px}
@@ -178,10 +178,10 @@ let FD={rows:null,at:'',days:60,q:'',err:'',busy:false,trunc:false},FL=[];
 const nz=s=>String(s||'').replace(/\s+/g,' ').trim().toLowerCase(),cl=s=>String(s||'').replace(/\s+/g,' ').trim();
 function fLoad(){FD.busy=true;FD.err='';if(view==='feed')fList();
  api('sewn',tok,FD.days).then(r=>{FD.rows=r.rows||[];FD.trunc=!!r.truncated;FD.at=new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})}).catch(e=>{FD.err=msg(e)}).then(()=>{FD.busy=false;if(view==='feed')fList()})}
-function fMerge(){const m={};(FD.rows||[]).forEach(r=>{const k=r.date+'|'+nz(r.order)+'|'+nz(r.brand),e=m[k]||(m[k]={date:r.date,order:cl(r.order),brand:cl(r.brand),qty:0});e.qty+=+r.qty||0});
- const q=nz(FD.q);return Object.values(m).filter(e=>!q||nz(e.order+' '+e.brand).includes(q)).sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:a.order<b.order?-1:a.order>b.order?1:0)}
+function fMerge(){const m={};(FD.rows||[]).forEach(r=>{const k=r.date+'|'+nz(r.order)+'|'+nz(r.brand)+'|'+nz(r.type),e=m[k]||(m[k]={date:r.date,order:cl(r.order),brand:cl(r.brand),type:cl(r.type),qty:0});e.qty+=+r.qty||0});
+ const q=nz(FD.q);return Object.values(m).filter(e=>!q||nz(e.order+' '+e.brand+' '+e.type).includes(q)).sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:a.order<b.order?-1:a.order>b.order?1:a.type<b.type?-1:a.type>b.type?1:0)}
 function rFeed(){
- $('#body').innerHTML=`<div class="card"><div class="row"><input id="fq" placeholder="ค้นหาชื่อออร์เดอร์ / แบรนด์" value="${E(FD.q)}" style="flex:1;min-width:200px" oninput="FD.q=this.value;fList()">
+ $('#body').innerHTML=`<div class="card"><div class="row"><input id="fq" placeholder="ค้นหาชื่อออร์เดอร์ / แบรนด์ / ประเภท" value="${E(FD.q)}" style="flex:1;min-width:200px" oninput="FD.q=this.value;fList()">
  <select style="width:auto" onchange="FD.days=+this.value;fLoad()">${[30,60,90,180].map(n=>`<option value="${n}" ${n==FD.days?'selected':''}>ย้อนหลัง ${n} วัน</option>`).join('')}</select>
  <button class="gh" onclick="fLoad()">↻ รีเฟรช</button></div><p class="mu" id="fm" style="margin:10px 0 0"></p></div><div class="card" id="fl"></div>`;
  if(FD.rows===null&&!FD.busy)fLoad();else fList()}
@@ -191,16 +191,17 @@ function fList(){const box=$('#fl');if(!box)return;const fm=$('#fm');
  FL=fMerge();const td=S.days[today()],have=new Set(((td&&td.items)||[]).map(i=>nz(i.order)).filter(Boolean));
  if(fm)fm.textContent=`${FL.length} รายการ · อัปเดตเมื่อ ${FD.at} น.`+(FD.trunc?' · แสดงเฉพาะส่วนล่าสุด ลดจำนวนวันย้อนหลังเพื่อดูครบ':'');
  if(!FL.length){box.innerHTML='<p class="mu" style="text-align:center;margin:12px 0">'+(FD.q?'ไม่พบรายการที่ค้นหา':'ยังไม่มีงานที่เย็บในช่วงนี้')+'</p>';return}
- let last='',h='<div class="fh"><span>ชื่อออร์เดอร์</span><span>แบรนด์</span><span class="fq">เย็บแล้ว (ตัว)</span><span></span></div>';
+ let last='',h='<div class="fh"><span>ชื่อออร์เดอร์</span><span>แบรนด์</span><span>ประเภทเสื้อ</span><span class="fq">เย็บแล้ว (ตัว)</span><span></span></div>';
  FL.forEach((e,i)=>{if(e.date!==last){last=e.date;const sq=FL.filter(x=>x.date===e.date).reduce((a,x)=>a+x.qty,0);h+=`<div class="fd">${dL(e.date)} <span class="mu">· รวม ${M(sq)} ตัว</span></div>`}
-  h+=`<div class="fi"><div class="fn">${E(e.order)}${have.has(nz(e.order))?' <span class="ok" title="มีชื่อนี้ในใบวันนี้แล้ว">✓</span>':''}</div><div class="fb">${E(e.brand)||'<span class="mu">—</span>'}</div><div class="fq"><b>${M(e.qty)}</b> <span class="mu">ตัว</span></div>
+  h+=`<div class="fi"><div class="fn">${E(e.order)}${have.has(nz(e.order))?' <span class="ok" title="มีชื่อนี้ในใบวันนี้แล้ว">✓</span>':''}</div><div class="fb">${E(e.brand)||'<span class="mu">—</span>'}</div><div class="ft">${E(e.type)||'<span class="mu">—</span>'}</div><div class="fq"><b>${M(e.qty)}</b> <span class="mu">ตัว</span></div>
   <div class="fa"><button class="gh mi" onclick="fCopy(${i})">คัดลอกชื่อ</button><button class="gh mi" onclick="fAdd(${i})">+ ใส่ในใบวันนี้</button></div></div>`});
  box.innerHTML=h}
 function fCopy(i){const t=FL[i].order,ok=()=>toast('คัดลอกแล้ว: '+t);
  const fb=()=>{const a=document.createElement('textarea');a.value=t;a.style.cssText='position:fixed;opacity:0';document.body.appendChild(a);a.select();let r=false;try{r=document.execCommand('copy')}catch(e){}a.remove();r?ok():prompt('คัดลอกชื่อนี้ (Ctrl+C):',t)};
  if(navigator.clipboard&&window.isSecureContext)navigator.clipboard.writeText(t).then(ok,fb);else fb()}
 function fAdd(i){const e=FL[i];fl();sel=today();mon=sel.slice(0,7);const d=day(sel);
- const it=Object.assign(blank(),{order:e.order,brand:e.brand,job:S.cfg.jobs.some(j=>j.name==='แพ็คเสื้อ')?'แพ็คเสื้อ':'',qty:e.qty});
+ const it=Object.assign(blank(),{order:e.order,brand:e.brand,type:e.type,job:S.cfg.jobs.some(j=>j.name==='แพ็คเสื้อ')?'แพ็คเสื้อ':'',qty:e.qty});
+ const np=price4(it.job,it.type);if(np!==null)it.price=np;
  if(d.items.length===1&&!nb(d.items[0]))d.items[0]=it;else d.items.push(it);
  sv();toast('เพิ่มในใบวันนี้แล้ว: '+e.order);fList()}
 /* summaries */
