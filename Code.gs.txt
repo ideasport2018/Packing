@@ -117,3 +117,30 @@ function renameVal(t, field, o, n) {
     rg.setValues(rg.getValues().map(x => [x[0] === o ? n : x[0]]));
   } finally { L.releaseLock(); }
 }
+
+
+// ===== ดูงานที่แผนกเย็บทำแล้ว (อ่านอย่างเดียว) =====
+// ตั้งค่าใน Script Properties (Project Settings): SEWING_FEED_KEY = คีย์จาก setupFeedKey() ฝั่งเย็บ (ห้ามใส่คีย์ในโค้ดหรือเรโป)
+// ถ้า URL เว็บแอปฝั่งเย็บเปลี่ยน ให้ตั้ง SEWING_URL ใน Script Properties ทับค่าเริ่มต้นด้านล่าง
+const SEWING_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbwRSAI_usEp59qUKXK65odE-oSV-VKiDIeAQoH-T00mObYCvevcGVE-dPXuWbCT_oDGDQ/exec';
+function sewn(t, days) {
+  auth(t);
+  const p = PropertiesService.getScriptProperties();
+  const key = p.getProperty('SEWING_FEED_KEY');
+  if (!key) throw new Error('ยังไม่ได้ตั้งคีย์เชื่อมระบบเย็บ (SEWING_FEED_KEY ใน Script Properties)');
+  const url = p.getProperty('SEWING_URL') || SEWING_URL_DEFAULT;
+  let res;
+  try {
+    res = UrlFetchApp.fetch(url, {
+      method: 'post', contentType: 'text/plain;charset=utf-8', followRedirects: true, muteHttpExceptions: true,
+      payload: JSON.stringify({ fn: 'getSewn', key: key, opts: { days: Math.max(1, Math.min(366, +days || 60)) } })
+    });
+  } catch (e) { throw new Error('เชื่อมต่อระบบเย็บไม่ได้ ลองรีเฟรชอีกครั้ง'); }
+  let o;
+  try { o = JSON.parse(res.getContentText()); } catch (e) { throw new Error('ระบบเย็บตอบกลับไม่ถูกต้อง (ตรวจว่า Deploy ฝั่งเย็บเป็นเวอร์ชันใหม่แล้ว)'); }
+  if (!o || !o.ok) {
+    const m = { not_setup: 'ฝั่งเย็บยังไม่ได้รัน setupFeedKey', bad_key: 'คีย์เชื่อมระบบเย็บไม่ถูกต้อง', locked: 'ใส่คีย์ผิดหลายครั้ง ระบบเย็บล็อกชั่วคราว รอสักครู่แล้วลองใหม่', bad_request: 'ฝั่งเย็บยังไม่ได้ Deploy โค้ดเวอร์ชันใหม่' };
+    throw new Error(m[o && o.error] || 'ดึงข้อมูลจากระบบเย็บไม่สำเร็จ');
+  }
+  return { rows: o.rows, truncated: !!o.truncated, generated: o.generated };
+}
